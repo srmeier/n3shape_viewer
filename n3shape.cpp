@@ -880,14 +880,6 @@ void N3LoadTexture(const char* szFN) {
 	// NOTE: read in the header information
 	fread(&HeaderOrg, sizeof(_N3TexHeader), 1, fpTexture);
 
-	struct _N3TexHeader {
-		char szID[4];
-		int nWidth;
-		int nHeight;
-		int Format;
-		bool bMipMap;
-	};
-
 	// NOTE: display debug info
 	if(debugMode) {
 		printf("\nTexName: %s\n", m_szName0);
