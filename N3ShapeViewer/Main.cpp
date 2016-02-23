@@ -17,6 +17,10 @@
 #include "SDL2/SDL_opengl.h"
 
 //-----------------------------------------------------------------------------
+const Uint32 iWinWidth = 1080;
+const Uint32 iWinHeight = 720;
+
+//-----------------------------------------------------------------------------
 struct _N3Material {
 	unsigned char data[92];
 };
@@ -60,6 +64,8 @@ typedef struct {
 	SDL_bool down;
 	SDL_bool left;
 	SDL_bool right;
+	SDL_bool pageup;
+	SDL_bool pagedown;
 } Input;
 
 //-----------------------------------------------------------------------------
@@ -605,16 +611,18 @@ int SDL_main(int argc, char* argv[]) {
 	glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
 
 	float pDist = 4.2f;
+	float pDistP = 0.2f;
+
 	glm::mat4 view = glm::lookAt(
 		glm::vec3(pDist, pDist, pDist),
-		glm::vec3(0.0f, 0.0f, 0.0f),
+		glm::vec3(0.0f, pDistP, 0.0f),
 		glm::vec3(0.0f, 1.0f, 0.0f)
 	);
 
 	GLint uniView = glGetUniformLocation(shaderProgram, "view");
 	glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
-	glm::mat4 proj = glm::perspective(45.0f, 800.0f/600.0f, 1.0f, 60.0f);
+	glm::mat4 proj = glm::perspective(45.0f, (float)iWinWidth/(float)iWinHeight, 1.0f, 120.0f);
 
 	GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
 	glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
@@ -641,6 +649,12 @@ int SDL_main(int argc, char* argv[]) {
 				// NOTE: check for keyup
 				case SDL_KEYUP: {
 					switch(event.key.keysym.sym) {
+						case SDLK_PAGEUP:{
+							pInput.pageup = SDL_FALSE;
+						} break;
+						case SDLK_PAGEDOWN:{
+							pInput.pagedown = SDL_FALSE;
+						} break;
 						case SDLK_UP: {
 							pInput.up = SDL_FALSE;
 						} break;
@@ -660,6 +674,12 @@ int SDL_main(int argc, char* argv[]) {
 				case SDL_KEYDOWN: {
 					switch(event.key.keysym.sym) {
 						case SDLK_ESCAPE: running = SDL_FALSE;
+						case SDLK_PAGEUP:{
+							pInput.pageup = SDL_TRUE;
+						} break;
+						case SDLK_PAGEDOWN:{
+							pInput.pagedown = SDL_TRUE;
+						} break;
 						case SDLK_UP: {
 							pInput.up = SDL_TRUE;
 						} break;
@@ -677,11 +697,35 @@ int SDL_main(int argc, char* argv[]) {
 			}
 		}
 
+		if(pInput.pageup) {
+			pDistP -= 0.01f;
+			glm::mat4 view = glm::lookAt(
+				glm::vec3(pDist, pDist, pDist),
+				glm::vec3(0.0f, pDistP, 0.0f),
+				glm::vec3(0.0f, 1.0f, 0.0f)
+			);
+
+			GLint uniView = glGetUniformLocation(shaderProgram, "view");
+			glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
+		}
+
+		if(pInput.pagedown) {
+			pDistP += 0.01f;
+			glm::mat4 view = glm::lookAt(
+				glm::vec3(pDist, pDist, pDist),
+				glm::vec3(0.0f, pDistP, 0.0f),
+				glm::vec3(0.0f, 1.0f, 0.0f)
+			);
+
+			GLint uniView = glGetUniformLocation(shaderProgram, "view");
+			glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
+		}
+
 		if(pInput.up) {
 			pDist -= 0.05f;
 			glm::mat4 view = glm::lookAt(
 				glm::vec3(pDist, pDist, pDist),
-				glm::vec3(0.0f, 0.0f, 0.0f),
+				glm::vec3(0.0f, pDistP, 0.0f),
 				glm::vec3(0.0f, 1.0f, 0.0f)
 			);
 
@@ -693,7 +737,7 @@ int SDL_main(int argc, char* argv[]) {
 			pDist += 0.05f;
 			glm::mat4 view = glm::lookAt(
 				glm::vec3(pDist, pDist, pDist),
-				glm::vec3(0.0f, 0.0f, 0.0f),
+				glm::vec3(0.0f, pDistP, 0.0f),
 				glm::vec3(0.0f, 1.0f, 0.0f)
 			);
 
@@ -722,8 +766,45 @@ int SDL_main(int argc, char* argv[]) {
 
 		/* === */
 
+		static int      s_iFrames                 = 0;
+		static float    s_fTotTime                = 0.0f;
+		static float    s_fElapsedTime            = 0.0f;
+		static Uint64   s_uiLastCount             = 0;
+		static Uint64   s_uiDiffCount             = 0;
+		static Uint64   s_uiCountFreq             = 0;
+		static Uint64   s_uiCurrentCount          = 0;
+		static SDL_bool s_bManuallyLimitFrameRate = SDL_FALSE;
+
 		// NOTE: swap the front and back buffers
 		SDL_GL_SwapWindow(window);
+
+		s_iFrames++;
+		if(s_iFrames >= 100) s_bManuallyLimitFrameRate = SDL_TRUE;
+
+		s_uiCurrentCount = SDL_GetPerformanceCounter();
+		s_uiDiffCount = (s_uiCurrentCount-s_uiLastCount);
+		s_uiCountFreq = SDL_GetPerformanceFrequency();
+
+		s_fElapsedTime = ((float) s_uiDiffCount/(float) s_uiCountFreq);
+
+		if((1.0f/60.0f)-s_fElapsedTime > 0) {
+			if(s_bManuallyLimitFrameRate)
+				SDL_Delay((uint32_t) (1000.0f*((1.0f/60.0f)-s_fElapsedTime)));
+			s_fTotTime += 1.0f/60.0f;
+		} else {
+			s_fTotTime += s_fElapsedTime;
+		}
+
+		s_uiLastCount = s_uiCurrentCount;
+
+		if(s_fTotTime >= 1.0f) {
+			char strTitle[0xFF] = "";
+			sprintf(strTitle, "%s, FPS: %d", "N3ShapeViewer", s_iFrames);
+			SDL_SetWindowTitle(window, strTitle);
+
+			s_fTotTime = 0;
+			s_iFrames = 0;
+		}
 	}
 
 	/* === */
@@ -1029,8 +1110,7 @@ void N3Init(void) {
 		"N3Shape",
 		SDL_WINDOWPOS_CENTERED,
 		SDL_WINDOWPOS_CENTERED,
-		640,
-		480,
+		iWinWidth, iWinHeight,
 		SDL_WINDOW_OPENGL
 	);
 
